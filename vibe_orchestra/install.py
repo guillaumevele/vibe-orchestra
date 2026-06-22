@@ -50,6 +50,41 @@ CAPABILITY_SERVERS = [
 # Everything we own (so --uninstall removes exactly these, preserving the user's).
 OUR_NAMES = tuple(s["name"] for s in OUR_SERVERS + CAPABILITY_SERVERS)
 
+_GOAL_THINKER = '''\
+# Deep-reasoning subagent for /goal: pins Magistral for a multi-turn sub-run.
+# The owner-gated, model-pinning pattern. magistral is NOT in the default
+# config.models, so this co-declares its own provider + model block (LEAN-style)
+# or it would crash on dispatch. thinking="off" on purpose: magistral reasons
+# natively and REJECTS a reasoning_effort request (HTTP 400).
+display_name = "Goal Thinker"
+description = "Deep multi-turn reasoning on Magistral. Use for a hard root-cause, an architecture decision, or a tricky proof inside a /goal run."
+safety = "neutral"
+agent_type = "subagent"
+active_model = "magistral"
+enabled_tools = ["read", "grep", "bash"]
+
+[[providers]]
+name = "mistral-thinker"
+api_base = "https://api.mistral.ai/v1"
+api_key_env_var = "MISTRAL_API_KEY"
+backend = "mistral"
+
+[[models]]
+name = "magistral-medium-latest"
+provider = "mistral-thinker"
+alias = "magistral"
+thinking = "off"
+temperature = 0.7
+auto_compact_threshold = 168000
+
+[compaction_model]
+name = "mistral-small-latest"
+provider = "mistral-thinker"
+alias = "thinker-compact"
+temperature = 0.2
+thinking = "off"
+'''
+
 _GOAL_VERIFIER = '''\
 # Adversarial verifier subagent for /goal. The `task` tool can dispatch it
 # (agent_type = subagent). It pins NO active_model -> inherits the session model
@@ -209,6 +244,7 @@ def install(vibe_home: Path, repo_dir: Path, ios_kit: Path | None,
     (vibe_home / "skills" / "goal" / "SKILL.md").write_text(
         goal_skill.read_text(encoding="utf-8"), encoding="utf-8")
     (vibe_home / "agents" / "goal-verifier.toml").write_text(_GOAL_VERIFIER, encoding="utf-8")
+    (vibe_home / "agents" / "goal-thinker.toml").write_text(_GOAL_THINKER, encoding="utf-8")
 
     # 3b. iOS specialist: posture + patterns + a real vibe skill.
     (vibe_home / "skills" / "ios" / "SKILL.md").write_text(_IOS_SKILL, encoding="utf-8")
@@ -248,9 +284,10 @@ def uninstall(vibe_home: Path) -> None:
     link = vibe_home / "agents" / "ios.toml"
     if link.is_symlink():
         link.unlink()
-    gv = vibe_home / "agents" / "goal-verifier.toml"
-    if gv.exists():
-        gv.unlink()
+    for name in ("goal-verifier.toml", "goal-thinker.toml"):
+        p = vibe_home / "agents" / name
+        if p.exists():
+            p.unlink()
     print("Removed vibe-orchestra. (Backups *.orchestra-bak left in place.)")
 
 

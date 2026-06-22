@@ -51,8 +51,26 @@ def test_verifier_subagent_pins_no_model(tmp_path):
     assert "active_model" not in d
 
 
+def test_goal_thinker_pins_magistral_with_self_contained_block(tmp_path):
+    # The owner-gated model-pinning pattern: it MUST co-declare its provider+model
+    # so active_model resolves (else it crashes on dispatch). Proven to boot live.
+    I.install(tmp_path, REPO, ios_kit=None)
+    d = tomllib.loads((tmp_path / "agents" / "goal-thinker.toml").read_text())
+    assert d["agent_type"] == "subagent"
+    assert d["active_model"] == "magistral"
+    aliases = {m["alias"] for m in d["models"]}
+    assert "magistral" in aliases                    # the pinned alias is declared
+    assert any(p["name"] == "mistral-thinker" for p in d["providers"])
+    # thinking must be off (magistral rejects a reasoning_effort request, HTTP 400)
+    assert all(m.get("thinking", "off") == "off" for m in d["models"])
+    # never embed a key; the provider references an env var
+    assert d["providers"][0]["api_key_env_var"] == "MISTRAL_API_KEY"
+    assert "api_key" not in d["providers"][0]
+
+
 def test_uninstall_removes_goal(tmp_path):
     I.install(tmp_path, REPO, ios_kit=None)
     I.uninstall(tmp_path)
     assert not (tmp_path / "skills" / "goal").exists()
     assert not (tmp_path / "agents" / "goal-verifier.toml").exists()
+    assert not (tmp_path / "agents" / "goal-thinker.toml").exists()

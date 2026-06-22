@@ -1,0 +1,33 @@
+# A deep-reasoning subagent for /goal: pins Magistral for a multi-turn sub-run.
+# This is the owner-gated, model-pinning pattern. Because magistral is NOT in the
+# default config.models, this profile co-declares its own provider + model block
+# (LEAN-style) so active_model resolves — otherwise it crashes on dispatch.
+# `thinking = "off"` on purpose: magistral-medium reasons natively and REJECTS a
+# reasoning_effort request (HTTP 400), so we must not ask vibe to send one.
+display_name = "Goal Thinker"
+description = "Deep multi-turn reasoning on Magistral. Use for a hard root-cause, an architecture decision, or a tricky proof inside a /goal run."
+safety = "neutral"
+agent_type = "subagent"
+active_model = "magistral"
+enabled_tools = ["read", "grep", "bash"]
+
+[[providers]]
+name = "mistral-thinker"
+api_base = "https://api.mistral.ai/v1"
+api_key_env_var = "MISTRAL_API_KEY"
+backend = "mistral"
+
+[[models]]
+name = "magistral-medium-latest"
+provider = "mistral-thinker"
+alias = "magistral"
+thinking = "off"
+temperature = 0.7
+auto_compact_threshold = 168000
+
+[compaction_model]
+name = "mistral-small-latest"
+provider = "mistral-thinker"
+alias = "thinker-compact"
+temperature = 0.2
+thinking = "off"

@@ -40,9 +40,11 @@ back to the driving model + wired plugins for those steps.
      `surgical_patch`.
    - **agentic-build / chat** → do it inline on the driving model, using the
      plugins `route` told you to `use` (apple-docs, context7, …).
-   - Delegate to a subagent via the `task` tool **only** when a subtask needs a
-     different model pinned across many turns, or strong context isolation (a noisy
-     exploration). For one-shot model work the tools above are cheaper.
+   - Delegate to a subagent via the `task` tool when a subtask needs a different
+     model pinned across many turns, or strong context isolation. The provided
+     subagents: **`goal-thinker`** (pins Magistral for deep multi-turn reasoning —
+     hard root-cause, architecture, proofs) and **`goal-verifier`** (read-only,
+     re-runs a proof). For a one-shot model answer the tools above are cheaper.
 
 4. **Verify (Verifier).** After each subtask, run its acceptance check. **The verify
    step MUST be a tool call** (bash / vision / a re-read of the diff), never prose.
@@ -69,7 +71,9 @@ back to the driving model + wired plugins for those steps.
 - Fan-out is **sequential**, not parallel. "Thinker/Worker/Verifier" means role
   separation, not concurrent workers.
 - A model-pinning subagent loads fine at discovery but **crashes on first dispatch**
-  if its `active_model` alias is not in `config.models` (only `devstral-small` and
-  `local` are safe to pin today). `goal-verifier` pins nothing, so it boots safely.
+  if its `active_model` alias is not in `config.models`. `goal-thinker` avoids this
+  by co-declaring its own Magistral provider+model block (and `thinking="off"`,
+  since magistral rejects a reasoning_effort request) — proven to boot by dispatch.
+  `goal-verifier` pins nothing.
 - Delegating to a subagent triggers a permission **ASK** the first time. An
   unattended run pauses there unless you have allowlisted `goal-*` yourself.
