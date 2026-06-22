@@ -21,9 +21,11 @@ except ModuleNotFoundError:  # pragma: no cover
 POSTURE_MARK = "vibe-orchestra"
 OUR_SERVERS = [
     {"name": "vibe-orchestra", "transport": "stdio", "command": "vibe-orchestra-mcp",
+     "startup_timeout_sec": 30.0,
      "prompt": "Call route(task) FIRST to pick the best Mistral model, specialist, tool, "
                "and the real plugins/skills to connect for the subject."},
     {"name": "vibe-fim", "transport": "stdio", "command": "vibe-fim-mcp",
+     "startup_timeout_sec": 30.0,
      "prompt": "surgical_patch rewrites ONLY the region between two anchors via Codestral "
                "FIM; prefix/suffix byte-identical, rejected if it no longer parses."},
 ]
@@ -47,6 +49,18 @@ CAPABILITY_SERVERS = [
 ]
 # Everything we own (so --uninstall removes exactly these, preserving the user's).
 OUR_NAMES = tuple(s["name"] for s in OUR_SERVERS + CAPABILITY_SERVERS)
+
+_GOAL_VERIFIER = '''\
+# Adversarial verifier subagent for /goal. The `task` tool can dispatch it
+# (agent_type = subagent). It pins NO active_model -> inherits the session model
+# -> boots safely. Read-only: it can run the proof command and read the diff, but
+# it cannot edit, so it cannot fix-then-claim.
+display_name = "Goal Verifier"
+description = "Re-runs a /goal subtask's acceptance check independently. Read-only."
+safety = "safe"
+agent_type = "subagent"
+enabled_tools = ["read", "grep", "bash"]
+'''
 
 _IOS_SKILL = """\
 ---
@@ -188,7 +202,15 @@ def install(vibe_home: Path, repo_dir: Path, ios_kit: Path | None,
     if with_capabilities:
         print("  connected keyless plugins: " + ", ".join(s["name"] for s in CAPABILITY_SERVERS))
 
-    # 3. iOS specialist: posture + patterns + a real vibe skill.
+    # 3a. /goal autonomous-loop skill (native /goal slash-command) + its safe,
+    #     read-only verifier subagent (pins no model -> boots safely).
+    (vibe_home / "skills" / "goal").mkdir(parents=True, exist_ok=True)
+    goal_skill = Path(__file__).parent / "skills" / "goal" / "SKILL.md"
+    (vibe_home / "skills" / "goal" / "SKILL.md").write_text(
+        goal_skill.read_text(encoding="utf-8"), encoding="utf-8")
+    (vibe_home / "agents" / "goal-verifier.toml").write_text(_GOAL_VERIFIER, encoding="utf-8")
+
+    # 3b. iOS specialist: posture + patterns + a real vibe skill.
     (vibe_home / "skills" / "ios" / "SKILL.md").write_text(_IOS_SKILL, encoding="utf-8")
     if ios_kit and (ios_kit / "AGENTS.md").exists():
         shutil.copy2(ios_kit / "AGENTS.md", data / "AGENTS.md")
@@ -222,9 +244,13 @@ def uninstall(vibe_home: Path) -> None:
                           encoding="utf-8")
     shutil.rmtree(vibe_home / "orchestra", ignore_errors=True)
     shutil.rmtree(vibe_home / "skills" / "ios", ignore_errors=True)
+    shutil.rmtree(vibe_home / "skills" / "goal", ignore_errors=True)
     link = vibe_home / "agents" / "ios.toml"
     if link.is_symlink():
         link.unlink()
+    gv = vibe_home / "agents" / "goal-verifier.toml"
+    if gv.exists():
+        gv.unlink()
     print("Removed vibe-orchestra. (Backups *.orchestra-bak left in place.)")
 
 

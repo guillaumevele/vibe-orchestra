@@ -48,6 +48,22 @@ posture). For a route whose ideal model differs from the current one and has no
 backing tool yet, say so and proceed — do not pretend you silently switched
 models. Per-subtask model switching grows by adding more model-backed tools.
 
+## Autonomous goals
+
+For a multi-step GOAL, the user can run **`/goal <goal>`** — an autonomous loop
+that decomposes the goal, routes each subtask, dispatches to the smallest
+mechanism that works, and refuses to mark a step done until a tool call proves it.
+You can also follow that loop yourself when a task clearly needs it. It is a
+hand-designed Thinker/Worker/Verifier loop — sequential, prompted not enforced,
+honest about its limits.
+
+## Model-backed tools
+
+Beyond routing, you can hand a sub-problem to the right Mistral model directly:
+`reason` (Magistral, hard reasoning), `vision` (Pixtral, screenshots/UI), `quick`
+(Ministral, cheap transforms). These make a real Mistral API call for that subtask
+even though your session model is fixed (they need `MISTRAL_API_KEY` in the env).
+
 ## Always
 
 - Verify before asserting; "it compiles" is not proof — show a run, a test, or a

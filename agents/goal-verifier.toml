@@ -1,0 +1,11 @@
+# An adversarial verifier subagent for /goal. The `task` tool can dispatch it
+# (agent_type = subagent). It pins NO active_model, so it inherits the session
+# model and boots safely (no get_active_model crash). It can run the proof
+# command and read the diff, but it CANNOT edit — so it cannot fix-then-claim.
+display_name = "Goal Verifier"
+description = "Re-runs a /goal subtask's acceptance check independently. Read-only: runs tests/builds and reads diffs, cannot edit."
+safety = "safe"
+agent_type = "subagent"
+
+# Allowlist exactly the tools needed to PROVE, nothing that can mutate.
+enabled_tools = ["read", "grep", "bash"]

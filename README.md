@@ -116,17 +116,56 @@ no network:
 classify("rename foo to bar", chat_fn=lambda system, user: '{"route": "surgical-edit"}')
 ```
 
+## `/goal` — autonomous loop
+
+Installed as a native vibe slash-command. Give it a goal; it runs a hand-designed
+**Thinker / Worker / Verifier** loop:
+
+```
+/goal ship a gated Metal loader on the onboarding screen
+```
+
+1. **decompose** into 2–6 subtasks, each with an explicit acceptance check, to
+   `./.vibe-goal/PLAN.md`;
+2. **route** each subtask (model / specialist / plugins);
+3. **dispatch** to the smallest mechanism that works — `surgical_patch` for a
+   bounded edit, `reason`/`vision`/`quick` for a model sub-call, the `ios` skill
+   for SwiftUI/Metal, or a subagent only when a different model must be pinned;
+4. **verify** with a *tool call* (never prose) and paste the evidence into
+   `REPORT.md`; on failure it re-routes (retry budget 2);
+5. **synthesize**, stating which model each step actually ran on.
+
+A read-only `goal-verifier` subagent (runs the proof, cannot edit) is installed
+for independent verification.
+
+## Model-backed tools
+
+The router can also hand a sub-problem to the right model directly — these make a
+real Mistral API call for that subtask even though your session model is fixed:
+
+| tool | model | for |
+|---|---|---|
+| `reason` | Magistral | hard root-cause / design / logic |
+| `vision` | Pixtral | screenshots, UI, photos |
+| `quick` | Ministral | cheap extract / classify / reformat |
+
 ## Honest limits
 
 - **Coordination is hand-designed, not learned.** Fugu's edge is the trained
   coordinator; this is a policy + a classifier. It is transparent and cheap, not
   evolved.
-- **Within one session the driving model is fixed.** `route()` tells you the
-  ideal model and gives you the tools/specialists to act on it — real today for
-  **edits** (Codestral FIM) and **iOS** (the specialist posture). Routes whose
-  ideal model differs and have no backing tool yet are surfaced, not silently
-  switched. Full per-subtask model switching grows by adding more model-backed
-  tools — that is the roadmap, stated plainly so nothing is overclaimed.
+- **Within one session the driving model is fixed.** You reach other Mistral
+  models the two real ways: the model-tools (`reason`/`vision`/`quick`,
+  single-shot API calls) and `surgical_patch` (Codestral FIM), or a subagent that
+  pins a model. `route()` never silently swaps the session model.
+- **`/goal` is prompted, not enforced.** A skill is instructions, not a runtime —
+  the loop runs as faithfully as the model follows it. Fan-out is **sequential**,
+  not parallel; "Thinker/Worker/Verifier" is role separation, not concurrent
+  workers. Calling it Fugu-*like* refers to that shape, not learned coordination.
+- **Model-pinning subagents are owner-gated.** Pinning an `active_model` alias not
+  in your `config.models` crashes on first dispatch, so v1 ships none (the
+  `goal-verifier` pins nothing). Adding one means co-declaring its provider/model
+  block — left to you on purpose.
 
 ## Specialties
 
