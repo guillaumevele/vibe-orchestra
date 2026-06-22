@@ -18,10 +18,12 @@ PY="$(command -v vibe >/dev/null 2>&1 && dirname "$(command -v vibe)")/python"
 [ -x "$PY" ] || PY="python3"
 
 if [ "${1:-}" = "--uninstall" ]; then
-  "$PY" -m vibe_orchestra.install --uninstall --vibe-home "${VIBE_HOME}" 2>/dev/null \
-    || PYTHONPATH="${REPO_DIR}" "$PY" -m vibe_orchestra.install --uninstall --vibe-home "${VIBE_HOME}"
+  PYTHONPATH="${REPO_DIR}" "$PY" -m vibe_orchestra.install --uninstall --vibe-home "${VIBE_HOME}"
   exit 0
 fi
+
+CAPS=""
+for a in "$@"; do [ "$a" = "--with-capabilities" ] && CAPS="--with-capabilities"; done
 
 echo "Installing vibe-orchestra into ${VIBE_HOME}…"
 
@@ -35,9 +37,18 @@ if ! command -v vibe-orchestra-mcp >/dev/null 2>&1; then
     || echo "  NOTE: run  pip install \"${REPO_DIR}[mcp]\""
 fi
 
-# 2. Wire ~/.vibe (posture + global MCP + iOS specialist).
+# 1b. Pre-warm the keyless capability packages so a cold `npx` does not exceed
+#     the startup timeout and destabilise vibe's MCP init.
+if [ -n "${CAPS}" ] && command -v npm >/dev/null 2>&1; then
+  echo "  pre-warming capability plugins (one-time npm install)…"
+  npm install -g @kimsungwhee/apple-docs-mcp @upstash/context7-mcp \
+    @modelcontextprotocol/server-sequential-thinking >/dev/null 2>&1 \
+    || echo "  NOTE: npm pre-warm failed; capability servers may start slowly."
+fi
+
+# 2. Wire ~/.vibe (posture + global MCP + iOS specialist [+ keyless plugins]).
 PYTHONPATH="${REPO_DIR}" "$PY" -m vibe_orchestra.install \
-  --vibe-home "${VIBE_HOME}" --repo "${REPO_DIR}" --ios-kit "${IOS_KIT}"
+  --vibe-home "${VIBE_HOME}" --repo "${REPO_DIR}" --ios-kit "${IOS_KIT}" ${CAPS}
 
 cat <<EOF
 

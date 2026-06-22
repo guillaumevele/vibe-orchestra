@@ -23,6 +23,22 @@ task and returns the best **model**, **specialist**, and **tool**. Then dispatch
   recommended approach. State which model `route` recommended so the choice is
   visible.
 
+## Connect the real tools for the subject
+
+`route` also returns the **capabilities** (MCP plugins / skills) that serve the
+task's subject — split into ones already **wired** into vibe and ones to
+**consider adding**. Act on them:
+
+- Use the wired plugins directly (e.g. `apple-docs` to verify an iOS API,
+  `context7` for a library's current docs, `sequential-thinking` for a hard
+  derivation, `supabase` for the backend, `github` for repo work).
+- If a recommended capability is *not* wired and would clearly help, tell the user
+  the one-line command to add it (and which key to set) — never invent or inject
+  secrets. Run `capabilities` to see the full catalogue.
+
+This is what makes the orchestrator autonomous: it reaches for the right real
+tool per subject instead of guessing.
+
 ## Honest limits (so you don't overclaim)
 
 Within one session your *driving* model is fixed. `route` tells you the ideal

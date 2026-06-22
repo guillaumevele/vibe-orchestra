@@ -43,8 +43,21 @@ IOS_KIT=/path/to/vibe-ios-kit ./install.sh
 it touches and edits only inside marked blocks):
 
 - the orchestration posture → `~/.vibe/AGENTS.md` (loaded by *every* session),
-- the `route` and `surgical_patch` tools → `~/.vibe/config.toml` (global MCP),
-- the iOS specialist (posture + pattern library) from `vibe-ios-kit`.
+- the `route` + `surgical_patch` tools → `~/.vibe/config.toml` (global MCP),
+- the iOS specialist (posture + 38 patterns + a real `ios` vibe skill) from `vibe-ios-kit`.
+
+Add `--with-capabilities` to also connect a curated set of real, **keyless** MCP
+plugins so the orchestrator is autonomous out of the box:
+
+```bash
+./install.sh --with-capabilities     # + apple-docs, context7, sequential-thinking
+```
+
+It pre-warms the npm cache and gives those servers a generous startup timeout —
+a cold `npx` download otherwise exceeds vibe's 10s limit and destabilises MCP
+init (learned the hard way). Plugins that need a key (github, supabase, brave)
+are **catalogued with their command and env var for you to add yourself** — this
+project never ships or asks for secrets.
 
 After that, anywhere — no `--agent`, no per-project copy:
 
@@ -60,12 +73,35 @@ Plain `vibe` calls `route()` to pick the model/specialist, then edits via
 
 ```bash
 pip install vibe-orchestra
-vibe-orchestra route "why does the app freeze after 90s on the Vera tab?"
-#   route      : reasoning
-#   model      : magistral-medium-latest
-#   why        : root-cause debugging
-vibe-orchestra routes          # print the full model policy
+vibe-orchestra route "verify the SwiftUI glassEffect API then add a glass tab bar"
+#   route      : ios
+#   model      : devstral-latest
+#   subjects   : apple-docs, ios
+#   use        : ios, apple-docs        (already wired)
+#   why        : SwiftUI work -> iOS specialist
+vibe-orchestra routes          # the model policy
+vibe-orchestra capabilities    # real plugins/skills: wired vs available
 ```
+
+## Connect real plugins per subject
+
+`route` is **capability-aware**: it returns not just a model and specialist but
+the real plugins/skills that serve the task's subject — split into ones already
+**wired** into vibe and ones to **consider adding** (with the exact command and
+any key). The catalog is verified, public packages only:
+
+| subject | plugin | key |
+|---|---|---|
+| iOS / Apple APIs | `apple-docs` | — |
+| library docs | `context7` | — |
+| hard reasoning | `sequential-thinking` | — |
+| browser / scrape | `playwright` | — |
+| backend / Postgres | `supabase` | `SUPABASE_ACCESS_TOKEN` |
+| repos / PRs | `github` | `GITHUB_PERSONAL_ACCESS_TOKEN` |
+| web search | `brave-search` | `BRAVE_API_KEY` |
+
+That is the autonomy: the orchestrator reaches for the right real tool per
+subject instead of guessing.
 
 ```python
 from vibe_orchestra import classify

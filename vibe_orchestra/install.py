@@ -19,14 +19,58 @@ except ModuleNotFoundError:  # pragma: no cover
     tomllib = None  # install runs on the vibe machine (3.11+); kept import-safe
 
 POSTURE_MARK = "vibe-orchestra"
-OUR_NAMES = ("vibe-orchestra", "vibe-fim")
 OUR_SERVERS = [
     {"name": "vibe-orchestra", "transport": "stdio", "command": "vibe-orchestra-mcp",
-     "prompt": "Call route(task) FIRST to pick the best Mistral model, specialist and tool."},
+     "prompt": "Call route(task) FIRST to pick the best Mistral model, specialist, tool, "
+               "and the real plugins/skills to connect for the subject."},
     {"name": "vibe-fim", "transport": "stdio", "command": "vibe-fim-mcp",
      "prompt": "surgical_patch rewrites ONLY the region between two anchors via Codestral "
                "FIM; prefix/suffix byte-identical, rejected if it no longer parses."},
 ]
+# Real, public, KEYLESS MCP servers connected with --with-capabilities. Verified
+# npm packages; nothing here needs a secret. (Key-requiring servers — github,
+# supabase, brave — are catalogued for the user to add themselves, never by us.)
+# A generous startup timeout: a cold `npx -y` downloads the package on first run,
+# which easily exceeds vibe's 10s default and would otherwise drop the server (and
+# destabilise MCP init). install.sh also pre-warms the npm cache.
+CAPABILITY_SERVERS = [
+    {"name": "apple-docs", "transport": "stdio", "command": "npx",
+     "args": ["-y", "@kimsungwhee/apple-docs-mcp"], "startup_timeout_sec": 90.0,
+     "prompt": "Live Apple framework docs / WWDC / symbol search — verify iOS APIs."},
+    {"name": "context7", "transport": "stdio", "command": "npx",
+     "args": ["-y", "@upstash/context7-mcp"], "startup_timeout_sec": 90.0,
+     "prompt": "Current docs for any library/framework by name."},
+    {"name": "sequential-thinking", "transport": "stdio", "command": "npx",
+     "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"],
+     "startup_timeout_sec": 90.0,
+     "prompt": "Structured multi-step reasoning scratchpad."},
+]
+# Everything we own (so --uninstall removes exactly these, preserving the user's).
+OUR_NAMES = tuple(s["name"] for s in OUR_SERVERS + CAPABILITY_SERVERS)
+
+_IOS_SKILL = """\
+---
+name: ios
+description: iOS 26/27 build specialist. Use for any SwiftUI, Metal, Swift 6, or
+  on-device FoundationModels task. Carries a CPU-budget posture and 38 distilled
+  patterns, and edits Swift via bounded Codestral FIM.
+---
+
+# iOS specialist
+
+When the task is iOS/SwiftUI/Metal work, follow this posture:
+
+- Read `~/.vibe/orchestra/specialists/ios/AGENTS.md` (the build posture: CPU
+  budget / gated animations, Swift 6 concurrency, native iOS 26 glass, on-device
+  FoundationModels, premium no-emoji aesthetic, proof-not-vibes).
+- Consult `~/.vibe/orchestra/specialists/ios/PATTERNS.md` (38 distilled iOS 26/27
+  techniques) before building any non-trivial UI / shader / AI feature.
+- Verify Apple APIs with the `apple-docs` plugin; do not trust memory.
+- Edit a Swift file that already compiles with `vibe-fim_surgical_patch` (bounded
+  region between two anchors) — never rewrite a working file to change a few lines.
+- A change is done when it builds, the CPU-at-rest gate passes, reduced motion is
+  handled, there are no emoji, and you have stated the proof you saw.
+"""
 
 
 def _toml_val(v) -> str:
@@ -120,9 +164,11 @@ def _backup(p: Path) -> None:
         shutil.copy2(p, bak)
 
 
-def install(vibe_home: Path, repo_dir: Path, ios_kit: Path | None) -> None:
+def install(vibe_home: Path, repo_dir: Path, ios_kit: Path | None,
+            with_capabilities: bool = False) -> None:
     vibe_home.mkdir(parents=True, exist_ok=True)
     (vibe_home / "agents").mkdir(exist_ok=True)
+    (vibe_home / "skills" / "ios").mkdir(parents=True, exist_ok=True)
     data = vibe_home / "orchestra" / "specialists" / "ios"
     data.mkdir(parents=True, exist_ok=True)
 
@@ -133,13 +179,17 @@ def install(vibe_home: Path, repo_dir: Path, ios_kit: Path | None) -> None:
     base = agents_md.read_text(encoding="utf-8") if agents_md.exists() else ""
     agents_md.write_text(_set_marker_block(base, POSTURE_MARK, posture), encoding="utf-8")
 
-    # 2. Global MCP tools (merge into existing mcp_servers).
+    # 2. Global MCP tools (+ keyless capabilities), merged into existing servers.
+    servers = list(OUR_SERVERS) + (list(CAPABILITY_SERVERS) if with_capabilities else [])
     config = vibe_home / "config.toml"
     _backup(config)
     text = config.read_text(encoding="utf-8") if config.exists() else ""
-    config.write_text(patch_mcp_servers(text, OUR_SERVERS), encoding="utf-8")
+    config.write_text(patch_mcp_servers(text, servers), encoding="utf-8")
+    if with_capabilities:
+        print("  connected keyless plugins: " + ", ".join(s["name"] for s in CAPABILITY_SERVERS))
 
-    # 3. iOS specialist.
+    # 3. iOS specialist: posture + patterns + a real vibe skill.
+    (vibe_home / "skills" / "ios" / "SKILL.md").write_text(_IOS_SKILL, encoding="utf-8")
     if ios_kit and (ios_kit / "AGENTS.md").exists():
         shutil.copy2(ios_kit / "AGENTS.md", data / "AGENTS.md")
         if (ios_kit / "PATTERNS.md").exists():
@@ -152,6 +202,14 @@ def install(vibe_home: Path, repo_dir: Path, ios_kit: Path | None) -> None:
     else:
         print(f"  NOTE: vibe-ios-kit not found at {ios_kit}; set IOS_KIT and re-run.")
 
+    # 4. Catalogue the key-requiring plugins for the user (never installed by us).
+    from .catalog import CATALOG
+    keyed = [c for c in CATALOG if c.needs_key]
+    if keyed:
+        print("  plugins you can add yourself (need a key):")
+        for c in keyed:
+            print(f"    {c.id}: {c.command}   [set {c.needs_key}]")
+
 
 def uninstall(vibe_home: Path) -> None:
     agents_md = vibe_home / "AGENTS.md"
@@ -163,6 +221,7 @@ def uninstall(vibe_home: Path) -> None:
         config.write_text(patch_mcp_servers(config.read_text(encoding="utf-8"), []),
                           encoding="utf-8")
     shutil.rmtree(vibe_home / "orchestra", ignore_errors=True)
+    shutil.rmtree(vibe_home / "skills" / "ios", ignore_errors=True)
     link = vibe_home / "agents" / "ios.toml"
     if link.is_symlink():
         link.unlink()
@@ -174,13 +233,15 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--vibe-home", default=str(Path.home() / ".vibe"))
     ap.add_argument("--repo", default=str(Path(__file__).resolve().parent.parent))
     ap.add_argument("--ios-kit", default="")
+    ap.add_argument("--with-capabilities", action="store_true")
     ap.add_argument("--uninstall", action="store_true")
     args = ap.parse_args(argv)
     home = Path(args.vibe_home)
     if args.uninstall:
         uninstall(home)
     else:
-        install(home, Path(args.repo), Path(args.ios_kit) if args.ios_kit else None)
+        install(home, Path(args.repo), Path(args.ios_kit) if args.ios_kit else None,
+                with_capabilities=args.with_capabilities)
     return 0
 
 

@@ -91,10 +91,12 @@ class Decision:
     reason: str
     tool: str
     specialist: str
+    subjects: tuple = ()
 
     def as_dict(self) -> dict:
         return {"route": self.route, "model": self.model, "tool": self.tool,
-                "specialist": self.specialist, "reason": self.reason}
+                "specialist": self.specialist, "subjects": list(self.subjects),
+                "reason": self.reason}
 
 
 def ministral_classify(system: str, user: str, *, api_key: str | None = None,
@@ -160,5 +162,19 @@ def classify(task: str, *, chat_fn: ChatFn | None = None) -> Decision:
         ios = ROUTES["ios"]
         reason = (reason + " | iOS content -> iOS specialist.").strip(" |")
         route = ios
+    from .catalog import subjects_for
     return Decision(route=route.name, model=route.model, reason=reason,
-                    tool=route.tool, specialist=route.specialist)
+                    tool=route.tool, specialist=route.specialist,
+                    subjects=subjects_for(task, route.name))
+
+
+def recommend(task: str, *, chat_fn: ChatFn | None = None, vibe_home=None) -> dict:
+    """Full picture: the route decision plus the REAL capabilities to connect for
+    this task's subjects — split into `use` (already wired into vibe) and `add`
+    (recommended, with the command and any key to set)."""
+    from .capabilities import installed_ids, split_capabilities
+    from .catalog import capabilities_for
+    decision = classify(task, chat_fn=chat_fn)
+    caps = capabilities_for(decision.subjects)
+    use, add = split_capabilities(caps, installed_ids(vibe_home))
+    return {"decision": decision, "use": use, "add": add}

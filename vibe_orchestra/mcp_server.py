@@ -8,7 +8,9 @@ extra and imported here.
 """
 from __future__ import annotations
 
-from .router import ROUTES, RouterError, classify
+from .catalog import CATALOG
+from .capabilities import installed_ids
+from .router import ROUTES, RouterError, recommend
 
 
 def _build_server():
@@ -24,22 +26,43 @@ def _build_server():
 
     @server.tool()
     def route(task: str) -> str:
-        """Classify a task and return the recommended Mistral model, specialist,
-        and tool. Call this FIRST when a task could use a different model than the
-        current one. Returns one line you act on: which model fits, whether to
-        adopt a specialist (e.g. the iOS posture), and which tool to reach for
-        (e.g. vibe-fim_surgical_patch for a bounded edit)."""
+        """Classify a task and return the best Mistral model, specialist, tool,
+        AND the real capabilities (MCP plugins / skills) to connect for its
+        subject. Call this FIRST for any non-trivial task. It tells you: which
+        model fits, whether to adopt a specialist (e.g. the iOS posture), which
+        tool to reach for (e.g. vibe-fim_surgical_patch), which already-wired
+        plugins to USE, and which to CONSIDER adding (with the command)."""
         try:
-            d = classify(task)
+            rec = recommend(task)
         except RouterError as exc:
             return f"ERROR: {exc}"
+        d, use, add = rec["decision"], rec["use"], rec["add"]
         lines = [f"route: {d.route}", f"model: {d.model}"]
         if d.specialist:
             lines.append(f"specialist: {d.specialist}")
         if d.tool:
             lines.append(f"tool: {d.tool}")
+        if d.subjects:
+            lines.append(f"subjects: {', '.join(d.subjects)}")
+        if use:
+            lines.append("use (already wired): " + ", ".join(c.id for c in use))
+        for c in add:
+            key = f" [set {c.needs_key}]" if c.needs_key else ""
+            lines.append(f"consider adding: {c.id} — {c.command}{key}")
         lines.append(f"why: {d.reason}")
         return "\n".join(lines)
+
+    @server.tool()
+    def capabilities() -> str:
+        """List the real plugins/skills the orchestrator knows, marking which are
+        already wired into vibe and which can be added (with command + any key)."""
+        live = installed_ids()
+        out = []
+        for c in CATALOG:
+            mark = "wired" if c.id in live else "available"
+            key = f" [needs {c.needs_key}]" if c.needs_key else ""
+            out.append(f"[{mark}] {c.id} ({', '.join(c.subjects) or '-'}): {c.command}{key}")
+        return "\n".join(out)
 
     @server.tool()
     def routes() -> str:
