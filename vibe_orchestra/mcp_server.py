@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from .catalog import CATALOG
 from .capabilities import installed_ids
+from . import models
 from .router import ROUTES, RouterError, recommend
 
 
@@ -63,6 +64,35 @@ def _build_server():
             key = f" [needs {c.needs_key}]" if c.needs_key else ""
             out.append(f"[{mark}] {c.id} ({', '.join(c.subjects) or '-'}): {c.command}{key}")
         return "\n".join(out)
+
+    @server.tool()
+    def reason(question: str, context: str = "") -> str:
+        """Hand a hard sub-problem to Magistral (chain-of-thought reasoning) and
+        get the answer back — use for root-cause debugging, architecture, or
+        math/logic, even while your own session runs a different model. This is
+        real per-subtask model use, not a hint."""
+        try:
+            return models.reason(question, context)
+        except models.ModelError as exc:
+            return f"ERROR: {exc}"
+
+    @server.tool()
+    def vision(image: str, question: str) -> str:
+        """Analyse an image / screenshot / UI with Pixtral. `image` is a local
+        file path or an http(s) URL."""
+        try:
+            return models.vision(image, question)
+        except models.ModelError as exc:
+            return f"ERROR: {exc}"
+
+    @server.tool()
+    def quick(task: str) -> str:
+        """Run a cheap, low-latency transform (extract / classify / reformat) on
+        Ministral."""
+        try:
+            return models.quick(task)
+        except models.ModelError as exc:
+            return f"ERROR: {exc}"
 
     @server.tool()
     def routes() -> str:
