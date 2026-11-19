@@ -97,3 +97,46 @@ def test_chat_http_error_surfaces_status():
     with _urlopen(fake):
         with pytest.raises(models.ModelError, match="HTTP 429"):
             models.chat([{"role": "user", "content": "x"}], model="m", api_key="k")
+
+
+@pytest.mark.parametrize("name, content", [
+    ("id_rsa", b"-----BEGIN OPENSSH PRIVATE KEY-----\nAAAA\n"),
+    (".env", b"MISTRAL_API_KEY=not-a-real-key\n"),
+    ("renamed.png", b"MISTRAL_API_KEY=not-a-real-key\n"),  # the name does not make it an image
+    ("empty.png", b""),
+])
+def test_image_part_refuses_files_that_are_not_images(tmp_path, name, content):
+    f = tmp_path / name
+    f.write_bytes(content)
+    with pytest.raises(models.ModelError, match="not a PNG, JPEG, GIF or WebP image"):
+        models._image_part(str(f))
+
+
+def test_vision_never_sends_a_non_image_file(tmp_path):
+    secret = tmp_path / "notes.txt"
+    secret.write_text("private")
+    sent = []
+    with pytest.raises(models.ModelError):
+        models.vision(str(secret), "what is this?", chat_fn=lambda *a, **k: sent.append((a, k)) or "")
+    assert sent == []
+
+
+def test_image_part_refuses_directories_and_oversized_files(tmp_path, monkeypatch):
+    with pytest.raises(models.ModelError, match="image not found"):
+        models._image_part(str(tmp_path))
+    big = tmp_path / "big.png"
+    big.write_bytes(b"\x89PNG\r\n\x1a\n" + b"0" * 64)
+    monkeypatch.setattr(models, "MAX_IMAGE_BYTES", 16)
+    with pytest.raises(models.ModelError, match="image too large"):
+        models._image_part(str(big))
+
+
+@pytest.mark.parametrize("header, mime", [
+    (b"\xff\xd8\xff\xe0rest", "image/jpeg"),
+    (b"GIF89a rest", "image/gif"),
+    (b"RIFF\x00\x00\x00\x00WEBPVP8 ", "image/webp"),
+])
+def test_image_part_mime_comes_from_the_signature(tmp_path, header, mime):
+    f = tmp_path / "picture.bin"
+    f.write_bytes(header)
+    assert models._image_part(str(f))["image_url"].startswith(f"data:{mime};base64,")

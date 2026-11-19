@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import base64
 import json
-import mimetypes
 import os
 import urllib.error
 import urllib.request
@@ -56,15 +55,40 @@ def chat(messages: list, *, model: str, api_key: str | None = None,
         raise ModelError(f"unexpected Mistral response: {data}") from exc
 
 
+MAX_IMAGE_BYTES = 20 * 1024 * 1024
+
+
+def _sniff_image(data: bytes) -> str | None:
+    """MIME type from the file signature, or None if it is not a supported image."""
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if data.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if data.startswith((b"GIF87a", b"GIF89a")):
+        return "image/gif"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    return None
+
+
 def _image_part(image: str) -> dict:
     """Build a Pixtral image content part from a local path or an http(s) URL."""
     if image.startswith(("http://", "https://", "data:")):
         return {"type": "image_url", "image_url": image}
     path = Path(image)
-    if not path.exists():
+    if not path.is_file():
         raise ModelError(f"image not found: {image}")
-    mime = mimetypes.guess_type(str(path))[0] or "image/png"
-    b64 = base64.b64encode(path.read_bytes()).decode("ascii")
+    # This function is reachable from an MCP tool call, so the path is chosen by
+    # a model. Only upload what is really an image: a file is sent when its
+    # first bytes are a known image signature, never on the strength of its
+    # name. That keeps keys, dotfiles and source out of the request.
+    if path.stat().st_size > MAX_IMAGE_BYTES:
+        raise ModelError(f"image too large (limit {MAX_IMAGE_BYTES // (1024 * 1024)} MB): {image}")
+    data = path.read_bytes()
+    mime = _sniff_image(data)
+    if mime is None:
+        raise ModelError(f"not a PNG, JPEG, GIF or WebP image: {image}")
+    b64 = base64.b64encode(data).decode("ascii")
     return {"type": "image_url", "image_url": f"data:{mime};base64,{b64}"}
 
 
